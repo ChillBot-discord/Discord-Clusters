@@ -24,7 +24,7 @@ bot = commands.AutoShardedBot(
     status=discord.Status.offline
 )
 bot.cluster_name = name
-bot.ws = None
+bot.websocket = None
 bot._last_result = None
 # bot.load_extension("jishaku")
 
@@ -88,13 +88,13 @@ async def _eval(ctx, *, body: str):
 
 
 async def ensure_ipc():
-    bot.ws = w = await websockets.connect('ws://localhost:42069')
+    bot.websocket = w = await websockets.connect('ws://localhost:42069')
     await w.send(bot.cluster_name.encode())
     try:
         await w.recv()
     except websockets.ConnectionClosed as exc:
         log.warning(f"! couldnt connect to ws: {exc.code} {exc.reason}")
-        bot.ws = None
+        bot.websocket = None
         raise
 
 
