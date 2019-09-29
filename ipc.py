@@ -1,20 +1,13 @@
 import asyncio
-
-try:
-    import websockets
-except ImportError:
-    import pip._internal
-    pip._internal.main(['install', 'websockets==8.0.2'])
-    import websockets
+import signal
+import websockets
 
 
 CLIENTS = {}
 
 
-async def dispatch(data, *, author="webserver"):
+async def dispatch(data):
     for cluster_name, client in CLIENTS.items():
-        if cluster_name == author:
-            continue
         await client.send(data)
         print(f'> Cluster[{cluster_name}]')
 
@@ -32,11 +25,14 @@ async def serve(ws, path):
         print(f'$ Cluster[{cluster_name}] connected successfully')
         async for msg in ws:
             print(f'< Cluster[{cluster_name}]: {msg}')
-            await dispatch(msg, author=cluster_name)
+            await dispatch(msg)
     finally:
         CLIENTS.pop(cluster_name)
         print(f'$ Cluster[{cluster_name}] disconnected')
 
+
+signal.signal(signal.SIGINT, signal.SIG_DFL)
+signal.signal(signal.SIGTERM, signal.SIG_DFL)
 
 server = websockets.serve(serve, 'localhost', 42069)
 loop = asyncio.get_event_loop()
