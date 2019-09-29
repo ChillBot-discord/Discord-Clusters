@@ -3,6 +3,7 @@ from asyncio.subprocess import DEVNULL, PIPE
 from datetime import datetime
 import aiohttp
 import sys
+import signal
 
 if sys.platform == 'win32':  # asyncio subprocesses only support this
     asyncio.set_event_loop(asyncio.ProactorEventLoop())
@@ -12,15 +13,15 @@ TOKEN = "insert bot token here"
 
 
 async def get_shard_count():
-    async with aiohttp.ClientSession() as s, s.get(
+    """async with aiohttp.ClientSession() as s, s.get(
         "https://discordapp.com/api/v7/gateway/bot", headers={
                 "Authorization": f'Bot {TOKEN}',
                 'User-Agent': 'DiscordBot (https://github.com/Rapptz/discord.py 1.3.0a) Python/3.7 aiohttp/3.5.4'
             }
     ) as g:
         data = await g.json()
-    return data.get('shards')
-    # return 20  # temp
+    return data.get('shards')"""
+    return 16  # temp
 
 
 NAMES = iter([
@@ -74,10 +75,12 @@ class Cluster:
         self.is_alive = True
 
     async def stop(self):
-        self.process.terminate()
-        await asyncio.sleep(5)
+        print(f'[Cluster#{self.name}] Stopping')
+        self.process.send_signal(signal.SIGTERM)
+        await asyncio.sleep(20)
         if self.is_alive:
-            self.process.kill()
+            print(f'[Cluster#{self.name}] Forcefully closing.')
+            self.process.send_signal(signal.SIGKILL)
             print(f"[Cluster#{self.name}] Closed forcefully.")
             return
         print(f"[Cluster#{self.name}] Closed gracefully.")
@@ -89,9 +92,7 @@ class Launcher:
         self.clusters = []
         self.ipc = None
 
-    @classmethod
-    async def start(cls, loop):
-        self = cls(loop)
+    async def start(self, loop):
         shard_count = await get_shard_count()
         for cluster_shards in get_cluster_shards(shard_count):
             c = Cluster(self, *cluster_shards, name=get_cluster_name(), loop=self.loop, shard_count=shard_count)
@@ -104,18 +105,17 @@ class Launcher:
         exit_time = datetime.utcnow().strftime('%m-%d-%y_%H-%M-%S')
         cluster, stderr = result.result()
         print(f'[Cluster#{cluster.name}] Process stopped: {cluster.process.returncode}')
-        if cluster.process.returncode != 0:
+        if cluster.process.returncode != 0 and cluster.process.returncode != -15:
+            with open(f"cluster-{cluster.name}-err-{exit_time}.txt", "wb") as f:
+                f.write(stderr)
             print(f'[Cluster#{cluster.name}] wrote stderr to `cluster-{cluster.name}-err-{exit_time}.txt')
-            if cluster.start_count == 5:
-                # ok somethings wrong lets stop trying to reconnect
-                print(f'[Cluster#{cluster.name}] too many resets, exiting')
-                return
-            cluster.loop.create_task(cluster.start())
+            # cluster.loop.create_task(cluster.start())
 
 
 if __name__ == '__main__':
     loop = asyncio.get_event_loop()
-    loop.create_task(Launcher.start(loop))
+    launcher = Launcher(loop)
+    loop.create_task(launcher.start(loop))
     try:
         loop.run_forever()
     except KeyboardInterrupt:
@@ -125,10 +125,10 @@ if __name__ == '__main__':
             if 'exception' not in ctx or not isinstance(ctx['exception'], asyncio.CancelledError):
                 _loop.default_excecption_handler(ctx)
 
+        loop.run_until_complete(asyncio.gather(*[cluster.stop() for cluster in launcher.clusters]))
+
         loop.set_exception_handler(shutdown_handler)
-        tasks = asyncio.gather(
-            *asyncio.all_tasks(loop=loop), loop=loop, return_exceptions=True
-        )
+        tasks = asyncio.gather(*asyncio.all_tasks(loop=loop), loop=loop, return_exceptions=True)
         tasks.add_done_callback(lambda t: loop.stop())
         tasks.cancel()
         while not tasks.done() and not loop.is_closed():
@@ -139,3 +139,4 @@ if __name__ == '__main__':
         loop.stop()
         print("press ctrl c again")
         loop.close()
+
