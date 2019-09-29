@@ -1,12 +1,15 @@
+import asyncio
+import io
+import json
+import logging
+import sys
+import textwrap
+import traceback
 from contextlib import redirect_stdout
 
-from discord.ext import commands
 import discord
-import logging
-import json
-import sys
 import websockets
-import traceback, textwrap, io
+from discord.ext import commands
 
 _, shard_ids, shard_count, name = sys.argv
 shard_ids = json.loads(shard_ids)
@@ -17,88 +20,109 @@ log.handlers = [logging.FileHandler(f'cluster-{name}.log', encoding='utf-8', mod
 
 log.info(f'[Cluster#{name}] {shard_ids}, {shard_count}')
 
-bot = commands.AutoShardedBot(
-    shard_count=int(shard_count),
-    shard_ids=shard_ids,
-    command_prefix="$$",
-    status=discord.Status.offline
-)
-bot.cluster_name = name
-bot.websocket = None
-bot._last_result = None
-# bot.load_extension("jishaku")
 
+class ClusterBot(commands.AutoShardedBot):
+    def __init__(self, **kwargs):
+        self.cluster_name = kwargs.pop('cluster_name')
+        super().__init__(**kwargs)
+        self.websocket = None
+        self._last_result = None
+        self.ws_task = None
+        self.responses = asyncio.Queue()
+        self.eval_wait = False
+        self.load_extension("eval")
 
-def cleanup_code(content):
-    """Automatically removes code blocks from the code."""
-    # remove ```py\n```
-    if content.startswith('```') and content.endswith('```'):
-        return '\n'.join(content.split('\n')[1:-1])
+    def cleanup_code(self, content):
+        """Automatically removes code blocks from the code."""
+        # remove ```py\n```
+        if content.startswith('```') and content.endswith('```'):
+            return '\n'.join(content.split('\n')[1:-1])
 
-    # remove `foo`
-    return content.strip('` \n')
+        # remove `foo`
+        return content.strip('` \n')
 
+    async def close(self, *args, **kwargs):
+        await self.websocket.close()
+        await super().close()
 
-@bot.command(hidden=True, name='eval')
-async def _eval(ctx, *, body: str):
-    """Evaluates a code"""
+    async def exec(self, code):
+        env = {
+            'bot': self,
+            '_': self._last_result
+        }
 
-    env = {
-        'bot': bot,
-        'ctx': ctx,
-        'channel': ctx.channel,
-        'author': ctx.author,
-        'guild': ctx.guild,
-        'message': ctx.message,
-        '_': bot._last_result
-    }
+        env.update(globals())
 
-    env.update(globals())
+        body = self.cleanup_code(code)
+        stdout = io.StringIO()
 
-    body = cleanup_code(body)
-    stdout = io.StringIO()
+        to_compile = f'async def func():\n{textwrap.indent(body, "  ")}'
 
-    to_compile = f'async def func():\n{textwrap.indent(body, "  ")}'
-
-    try:
-        exec(to_compile, env)
-    except Exception as e:
-        return await ctx.send(f'```py\n{e.__class__.__name__}: {e}\n```')
-
-    func = env['func']
-    try:
-        with redirect_stdout(stdout):
-            ret = await func()
-    except Exception as e:
-        value = stdout.getvalue()
-        await ctx.send(f'```py\n{value}{traceback.format_exc()}\n```')
-    else:
-        value = stdout.getvalue()
         try:
-            await ctx.message.add_reaction('\u2705')
-        except:
-            pass
+            exec(to_compile, env)
+        except Exception as e:
+            return f'{e.__class__.__name__}: {e}'
 
-        if ret is None:
-            if value:
-                await ctx.send(f'```py\n{value}\n```')
+        func = env['func']
+        try:
+            with redirect_stdout(stdout):
+                ret = await func()
+        except Exception as e:
+            value = stdout.getvalue()
+            f'{value}{traceback.format_exc()}'
         else:
-            bot._last_result = ret
-            await ctx.send(f'```py\n{value}{ret}\n```')
+            value = stdout.getvalue()
+
+            if ret is None:
+                if value:
+                    return str(value)
+                else:
+                    return 'None'
+            else:
+                self._last_result = ret
+                return f'{value}{ret}'
+
+    async def websocket_loop(self):
+        while True:
+            msg = await self.websocket.recv()
+            data = json.loads(msg, encoding='utf-8')
+            if self.eval_wait and data.get('response'):
+                await self.responses.put(data)
+            cmd = data.get('command')
+            if not cmd:
+                continue
+            if cmd == 'ping':
+                ret = {'response': 'pong'}
+                log.info("received command [ping]")
+            elif cmd == 'eval':
+                log.info(f"received command [eval] ({data['content']})")
+                content = data['content']
+                data = await self.exec(content)
+                ret = {'response': str(data)}
+            else:
+                ret = {'response': 'unknown command'}
+            ret['author'] = self.cluster_name
+            log.info(f"responding: {ret}")
+            await self.websocket.send(json.dumps(ret).encode('utf-8'))
+
+    async def ensure_ipc(self):
+        self.websocket = w = await websockets.connect('ws://localhost:42069')
+        await w.send(self.cluster_name.encode('utf-8'))
+        try:
+            await w.recv()
+            self.ws_task = self.loop.create_task(self.websocket_loop())
+        except websockets.ConnectionClosed as exc:
+            log.warning(f"! couldnt connect to ws: {exc.code} {exc.reason}")
+            self.websocket = None
+            raise
 
 
-async def ensure_ipc():
-    bot.websocket = w = await websockets.connect('ws://localhost:42069')
-    await w.send(bot.cluster_name.encode())
-    try:
-        await w.recv()
-    except websockets.ConnectionClosed as exc:
-        log.warning(f"! couldnt connect to ws: {exc.code} {exc.reason}")
-        bot.websocket = None
-        raise
-
-
-bot.ensure_ipc = ensure_ipc
+bot = ClusterBot(
+    command_prefix='$$',
+    shard_ids=shard_ids,
+    shard_count=int(shard_count),
+    cluster_name=name
+)
 
 
 @bot.event
@@ -124,4 +148,5 @@ async def on_error(*args):
 
 if __name__ == '__main__':
     bot.loop.create_task(bot.ensure_ipc())
-    bot.run("[token]")
+    bot.run("bot token here")
+
