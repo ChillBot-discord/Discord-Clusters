@@ -13,15 +13,15 @@ TOKEN = "insert bot token here"
 
 
 async def get_shard_count():
-    """async with aiohttp.ClientSession() as s, s.get(
+    async with aiohttp.ClientSession() as s, s.get(
         "https://discordapp.com/api/v7/gateway/bot", headers={
                 "Authorization": f'Bot {TOKEN}',
                 'User-Agent': 'DiscordBot (https://github.com/Rapptz/discord.py 1.3.0a) Python/3.7 aiohttp/3.5.4'
             }
     ) as g:
         data = await g.json()
-    return data.get('shards')"""
-    return 16  # temp
+    return data.get('shards')
+    # return 16  # temp
 
 
 NAMES = iter([
