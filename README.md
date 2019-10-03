@@ -33,3 +33,27 @@ Example log output:
 [2019-10-02 20:03:13,713 Cluster#Launcher/INFO] All clusters launched
 [2019-10-02 20:03:13,714 Cluster#Launcher/INFO] Startup completed in 260.7107082050061s
 ```
+### Extra Features
+> Automatically restarts clusters that died with a non-zero exit status
+
+```cs
+[2019-10-02 20:04:58,805 Cluster#Launcher/INFO] Cluster#Alpha exited with code -1
+[2019-10-02 20:04:58,806 Cluster#Launcher/INFO] Restarting cluster#Alpha
+[2019-10-02 20:04:58,811 Cluster#Alpha/INFO] Process started with PID 24149
+[2019-10-02 20:06:03,831 Cluster#Alpha/INFO] Process started successfully
+```
+> Will turn off if all clusters close with exit code 0
+```cs
+[2019-10-02 20:07:13,901 Cluster#Launcher/INFO] Cluster#Alpha found dead
+[2019-10-02 20:07:13,903 Cluster#Alpha/INFO] Shutting down with signal <Signals.SIGINT: 2>
+[2019-10-02 20:07:13,903 Cluster#Launcher/INFO] Cluster#Beta found dead
+[2019-10-02 20:07:13,904 Cluster#Beta/INFO] Shutting down with signal <Signals.SIGINT: 2>
+[2019-10-02 20:07:13,904 Cluster#Launcher/INFO] Cluster#Charlie found dead
+[2019-10-02 20:07:13,905 Cluster#Charlie/INFO] Shutting down with signal <Signals.SIGINT: 2>
+[2019-10-02 20:07:13,905 Cluster#Launcher/INFO] Cluster#Delta found dead
+[2019-10-02 20:07:13,905 Cluster#Delta/INFO] Shutting down with signal <Signals.SIGINT: 2>
+[2019-10-02 20:07:18,911 Cluster#Launcher/WARNING] All clusters appear to be dead
+[2019-10-02 20:07:18,914 Cluster#Launcher/INFO] Shutting down clusters
+```
+
+> Proper KeyboardInterrupt handling and cleanup
