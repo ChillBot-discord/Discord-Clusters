@@ -5,7 +5,7 @@ IPC is optional, but requires `websockets==8.0.2`
 I recommend using the `multiprocessing (*_mp)` versions, as they are the ones that I personally use.
 
 ## How to use
-Replace [launcher_mp.py#L13](L13) with your bots token, and ideally update `bot_mp.py` with your actual bot.
+Replace [L13](./launcher_mp.py#L13) with your bots token, and ideally update `bot_mp.py` with your actual bot.
 
 Example log output:
 ```cs
