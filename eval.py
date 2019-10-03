@@ -21,7 +21,7 @@ class Eval(commands.Cog):
             msgs = []
             while True:
                 try:
-                    msg = await asyncio.wait_for(self.bot.responses.get(), timeout=10)
+                    msg = await asyncio.wait_for(self.bot.responses.get(), timeout=3)
                 except asyncio.TimeoutError:
                     break
                 msgs.append(f'{msg["author"]}: {msg["response"]}')
@@ -80,4 +80,3 @@ class Eval(commands.Cog):
 
 def setup(bot):
     bot.add_cog(Eval(bot))
-
