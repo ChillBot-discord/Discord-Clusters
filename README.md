@@ -1,6 +1,6 @@
 Auto-scaling cluster system for discord.py
 
-IPC is optional, but requires `websockets==8.0.2`
+IPC is optional.
 
 I recommend using the `multiprocessing (*_mp)` versions, as they are the ones that I personally use.
 
