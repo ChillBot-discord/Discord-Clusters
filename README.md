@@ -2,10 +2,8 @@ Auto-scaling cluster system for discord.py
 
 IPC is optional.
 
-I recommend using the `multiprocessing (*_mp)` versions, as they are the ones that I personally use.
-
 ## How to use
-Replace [L13](./launcher_mp.py#L13) with your bots token, and ideally update `bot_mp.py` with your actual bot.
+Replace [L13](./launcher.py#L13) with your bots token, and ideally update `bot_mp.py` with your actual bot.
 
 Example log output:
 ```cs
