@@ -8,7 +8,7 @@ import time
 
 import requests
 
-from bot_mp import ClusterBot
+from bot import ClusterBot
 
 TOKEN = "<your token>"
 
